@@ -274,7 +274,6 @@ class IsometricGame {
         this.gamePaused = false;
         this.explosions = [];
         this.bullets = [];
-        this.hitEffects = []; // NEW: Array for hit effect particles
         this.camera = {
             x: this.player.x,
             y: this.player.y,
@@ -362,24 +361,6 @@ class IsometricGame {
         return true; // Not blocked
     }
 
-    // NEW: Create hit effect particles
-    createHitEffect(x, y, isCritical = false) {
-        const particleCount = isCritical ? 12 : 6;
-        for (let i = 0; i < particleCount; i++) {
-            const angle = (Math.PI * 2 * i) / particleCount + Math.random() * 0.5;
-            const speed = 2 + Math.random() * 3;
-            this.hitEffects.push({
-                x: x,
-                y: y,
-                vx: Math.cos(angle) * speed,
-                vy: Math.sin(angle) * speed,
-                life: 0.3,
-                maxLife: 0.3,
-                size: isCritical ? 4 : 3,
-                color: isCritical ? '#ffff00' : '#ff4444'
-            });
-        }
-    }
 
     // --- CORE GAME LOGIC (UNCHANGED SECTIONS OMITTED FOR BREVITY) ---
 
@@ -831,8 +812,7 @@ class IsometricGame {
                 speedVariation: speedVariation,
                 color: zombieStats.color,
                 size: zombieStats.size,
-                facing: 0,
-                hitFlash: 0 // NEW: For hit flash effect
+                facing: 0
             });
         }
     }
@@ -869,8 +849,7 @@ class IsometricGame {
             color: '#8b0000',
             size: 2.5,
             facing: 0,
-            isBoss: true,
-            hitFlash: 0 // NEW: For hit flash effect
+            isBoss: true
         };
         
         this.enemies.push(boss);
@@ -938,12 +917,11 @@ class IsometricGame {
                 // Use new AABB collision check
                 if (this.checkAABBCollision(bullet, enemy)) {
                     let damage = bullet.damage;
-                    let isCritical = false;
                     
                     // Apply critical hit
                     if (this.player.weapon.critChance && Math.random() < this.player.weapon.critChance) {
                         damage *= 2;
-                        isCritical = true;
+                        // Could add visual effect for critical hits
                     }
                     
                     // Apply boss damage bonus
@@ -952,10 +930,6 @@ class IsometricGame {
                     }
                     
                     enemy.health -= damage;
-                    enemy.hitFlash = 0.15; // NEW: Set hit flash duration
-                    
-                    // NEW: Create hit effect at impact point
-                    this.createHitEffect(bullet.x, bullet.y, isCritical);
                     
                     // Apply knockback if enabled
                     if (this.player.weapon.knockback) {
@@ -978,11 +952,6 @@ class IsometricGame {
         // --- Enemy Update & Collision ---
         let enemiesToRemove = new Set();
         for (const enemy of this.enemies) {
-            // NEW: Update hit flash
-            if (enemy.hitFlash > 0) {
-                enemy.hitFlash -= dt;
-            }
-            
             if (enemy.health <= 0) {
                 this.player.score += 10;
                 
@@ -1056,19 +1025,6 @@ class IsometricGame {
             document.getElementById('score').textContent = `Score: ${this.player.score}`;
         }
 
-        // NEW: Update hit effect particles
-        for (let i = this.hitEffects.length - 1; i >= 0; i--) {
-            const particle = this.hitEffects[i];
-            particle.x += particle.vx * dt;
-            particle.y += particle.vy * dt;
-            particle.vx *= 0.95; // Friction
-            particle.vy *= 0.95;
-            particle.life -= dt;
-            
-            if (particle.life <= 0) {
-                this.hitEffects.splice(i, 1);
-            }
-        }
 
         // --- Explosion update ---
         for (let i = this.explosions.length - 1; i >= 0; i--) {
@@ -1143,25 +1099,6 @@ class IsometricGame {
         const playerScreenX = (this.player.x - this.camera.x) * this.tileSize + this.canvas.width / 2;
         const playerScreenY = (this.player.y - this.camera.y) * this.tileSize + this.canvas.height / 2;
         this.drawPlayer(playerScreenX, playerScreenY);
-        
-        // NEW: Draw hit effect particles
-        for (const particle of this.hitEffects) {
-            const screenX = (particle.x - this.camera.x) * this.tileSize + this.canvas.width / 2;
-            const screenY = (particle.y - this.camera.y) * this.tileSize + this.canvas.height / 2;
-            
-            this.ctx.globalAlpha = particle.life / particle.maxLife;
-            this.ctx.fillStyle = particle.color;
-            this.ctx.shadowColor = particle.color;
-            this.ctx.shadowBlur = 10;
-            
-            this.ctx.beginPath();
-            this.ctx.arc(screenX, screenY, particle.size, 0, Math.PI * 2);
-            this.ctx.fill();
-            
-            this.ctx.shadowBlur = 0;
-            this.ctx.globalAlpha = 1.0;
-        }
-        
         for (const explosion of this.explosions) {
             const screenX = (explosion.x - this.camera.x) * this.tileSize + this.canvas.width / 2;
             const screenY = (explosion.y - this.camera.y) * this.tileSize + this.canvas.height / 2;
@@ -1235,13 +1172,7 @@ class IsometricGame {
             this.ctx.shadowBlur = 20;
         }
         
-        // NEW: Apply hit flash effect
-        if (enemy.hitFlash > 0) {
-            this.ctx.fillStyle = '#ffffff';
-        } else {
-            this.ctx.fillStyle = enemy.color;
-        }
-        
+        this.ctx.fillStyle = enemy.color;
         this.ctx.beginPath();
         this.ctx.arc(x, y, this.tileSize / 3 * enemy.size, 0, Math.PI * 2);
         this.ctx.fill();
@@ -1254,19 +1185,15 @@ class IsometricGame {
             this.ctx.shadowBlur = 0;
         }
         
-        // Only draw eyes if not hit flashing
-        if (enemy.hitFlash <= 0) {
-            this.ctx.fillStyle = '#ff0000';
-            const eyeOffset = this.tileSize / 8 * enemy.size;
-            const eyeSize = this.tileSize / 20 * enemy.size;
-            this.ctx.beginPath();
-            this.ctx.arc(x - eyeOffset, y - eyeOffset, eyeSize, 0, Math.PI * 2);
-            this.ctx.fill();
-            this.ctx.beginPath();
-            this.ctx.arc(x + eyeOffset, y - eyeOffset, eyeSize, 0, Math.PI * 2);
-            this.ctx.fill();
-        }
-        
+        this.ctx.fillStyle = '#ff0000';
+        const eyeOffset = this.tileSize / 8 * enemy.size;
+        const eyeSize = this.tileSize / 20 * enemy.size;
+        this.ctx.beginPath();
+        this.ctx.arc(x - eyeOffset, y - eyeOffset, eyeSize, 0, Math.PI * 2);
+        this.ctx.fill();
+        this.ctx.beginPath();
+        this.ctx.arc(x + eyeOffset, y - eyeOffset, eyeSize, 0, Math.PI * 2);
+        this.ctx.fill();
         const healthPercent = enemy.health / enemy.maxHealth;
         const barWidth = this.tileSize * 0.8 * enemy.size;
         const barHeight = enemy.isBoss ? 8 : 4;
