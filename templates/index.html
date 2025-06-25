@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Zombie Survival Shooter</title> <link rel="stylesheet" href="/static/css/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div id="game-container">
+        <canvas id="game-canvas"></canvas>
+
+        <div id="stats">
+            <div id="health-bar"><div id="health-value"></div></div>
+            <div id="exp-bar"><div id="exp-value"></div></div>
+            <div id="score">Score: 0</div>
+            <div id="level-text">Level 1</div>
+        </div>
+
+        <div id="controls">
+            <div id="joystick-area"></div>
+            <div id="attack-button">FIRE</div>
+            <div id="aim-joystick"></div>
+        </div>
+
+        <div id="message-container"></div>
+
+        <div id="skill-selection-menu" style="display: none;">
+            <h2>Choose Your Perk!</h2>
+            <div class="skill-option" data-skill-id="skill1">
+                <h3>Skill Name 1</h3>
+                <p>Description of skill 1 effect.</p>
+            </div>
+            <div class="skill-option" data-skill-id="skill2">
+                <h3>Skill Name 2</h3>
+                <p>Description of skill 2 effect.</p>
+            </div>
+            <div class="skill-option" data-skill-id="skill3">
+                <h3>Skill Name 3</h3>
+                <p>Description of skill 3 effect.</p>
+            </div>
+        </div>
+
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/nipplejs/0.10.1/nipplejs.min.js"></script>
+    <script src="/static/js/game.js"></script>
+    <script src="/static/js/skills.js"></script>
+</body>
+</html>
