@@ -1,0 +1,278 @@
+/* Universal Box-Sizing for consistent layouts */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    background-color: #0F0F0F; /* Darker, grittier background */
+    font-family: 'Press Start 2P', cursive, Arial, sans-serif; /* Pixel font for retro/survival feel */
+    touch-action: none; /* Prevents default touch behaviors like scrolling/zooming */
+    overflow: hidden; /* Hides scrollbars */
+    position: fixed; /* Ensures full screen coverage */
+    width: 100%;
+    height: 100%;
+    user-select: none; /* Prevents text selection on UI elements */
+}
+
+/* Optional: Import a retro-themed font from Google Fonts if you use 'Press Start 2P' */
+@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
+
+
+#game-container {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    overflow: hidden; /* Ensures game elements stay within bounds */
+}
+
+#game-canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: #1A1A1A; /* Slightly lighter than body, but still dark */
+}
+
+/* --- Controls Section (Bottom Left/Right) --- */
+#controls {
+    position: absolute;
+    bottom: 15px; /* Slightly closer to the bottom */
+    left: 0;
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end; /* Align to the bottom of the controls area */
+    padding: 0 15px; /* Slightly less padding */
+    z-index: 10;
+}
+
+/* Joystick Styling */
+#joystick-area,
+#aim-joystick {
+    width: 100px; /* Slightly smaller joysticks */
+    height: 100px;
+    background-color: rgba(30, 30, 30, 0.7); /* Darker, more opaque background */
+    border: 2px solid #333; /* Subtle border */
+    border-radius: 50%;
+    opacity: 0.8; /* Slightly less transparent */
+}
+
+/* Attack Button */
+#attack-button {
+    width: 70px; /* Slightly smaller button */
+    height: 70px;
+    background-color: rgba(180, 0, 0, 0.8); /* Deeper, more intense red */
+    border: 2px solid #FF3333; /* Brighter red border */
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-weight: bold;
+    font-size: 13px; /* Slightly smaller font */
+    user-select: none;
+    text-shadow: 0 0 5px rgba(255, 255, 255, 0.5); /* Subtle glow */
+    box-shadow: 0 0 10px rgba(255, 0, 0, 0.4); /* Outer glow for urgency */
+}
+#attack-button:active {
+    background-color: rgba(255, 0, 0, 0.9); /* Brighter when pressed */
+    box-shadow: 0 0 15px rgba(255, 0, 0, 0.7);
+}
+
+
+/* --- Minimap placeholder space (Top Left of the Canvas) --- */
+/* These variables define the space the minimap takes up on the game canvas.
+   Adjust them to match how your JavaScript draws the minimap. */
+:root {
+    --minimap-width: 120px;
+    --minimap-height: 120px;
+    --minimap-margin-top: 10px;
+    --minimap-margin-left: 10px; /* Changed from right to left */
+}
+
+/* --- Stats Section (Top Right - moved) --- */
+#stats {
+    position: absolute;
+    top: var(--minimap-margin-top); /* Aligns with minimap's top margin for consistency */
+    right: var(--minimap-margin-left); /* Aligns with minimap's left margin for consistency */
+    padding: 0;
+    z-index: 10;
+    color: #E0E0E0;
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
+    /* Ensure stats don't go beyond the minimap's right edge if it's there */
+    max-width: calc(100% - var(--minimap-width) - (2 * var(--minimap-margin-left)) - 20px); /* Adjust based on desired buffer */
+    text-align: right; /* Align text content to the right */
+}
+
+/* Health Bar */
+#health-bar {
+    width: 180px; /* Fixed width for consistent sizing */
+    height: 22px;
+    background-color: rgba(0, 0, 0, 0.6);
+    border: 1px solid #444;
+    border-radius: 11px;
+    overflow: hidden;
+    margin-bottom: 8px;
+    box-shadow: inset 0 0 5px rgba(0, 0, 0, 0.3);
+    /* For right alignment within the #stats flex/block context */
+    margin-left: auto; /* Pushes the health bar to the right */
+}
+
+#health-value {
+    height: 100%;
+    background: linear-gradient(to right, #CC0000, #FF3333);
+    transition: width 0.3s ease-out;
+    border-radius: 11px;
+}
+
+/* Experience Bar */
+#exp-bar {
+    width: 180px; /* Fixed width to match health bar */
+    height: 10px;
+    background-color: rgba(0, 0, 0, 0.6);
+    border: 1px solid #444;
+    border-radius: 5px;
+    overflow: hidden;
+    margin-bottom: 5px;
+    box-shadow: inset 0 0 3px rgba(0, 0, 0, 0.3);
+    /* For right alignment */
+    margin-left: auto; /* Pushes the experience bar to the right */
+}
+
+#exp-value {
+    width: 0%;
+    height: 100%;
+    background: linear-gradient(to right, #6A1B9A, #9B59B6);
+    transition: width 0.3s ease-out;
+    border-radius: 5px;
+}
+
+/* Score */
+#score {
+    font-size: 18px;
+    font-weight: bold;
+    color: #C0C0C0;
+    margin-bottom: 5px; /* Add some space below */
+    background-color: rgba(0, 0, 0, 0.3);
+    padding: 2px 8px;
+    border-radius: 4px;
+    /* Use block display for separate lines and auto margins for centering/alignment */
+    display: block; /* Makes score take full width */
+    margin-left: auto; /* Aligns to right within #stats */
+    text-align: right; /* Aligns text within its block */
+    text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+/* Level Text */
+#level-text {
+    font-size: 16px;
+    font-weight: bold;
+    color: #FFD700;
+    text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.7);
+    background-color: rgba(0, 0, 0, 0.4);
+    padding: 3px 8px;
+    border-radius: 5px;
+    border: 1px solid #555;
+    /* Use block display for separate lines and auto margins for centering/alignment */
+    display: block; /* Makes level text take full width */
+    margin-left: auto; /* Aligns to right within #stats */
+    text-align: right; /* Aligns text within its block */
+}
+
+/* Debug Information (Below where the minimap *would be* on the canvas, moved to the right) */
+#debug-info {
+    position: absolute;
+    top: calc(var(--minimap-margin-top) + var(--minimap-height) + 10px); /* Position below the minimap area */
+    right: var(--minimap-margin-left); /* Changed from right to left, to align with other elements on the right */
+    color: #00FF00; /* Bright green for debug text */
+    font-family: 'Consolas', 'Monaco', monospace; /* Monospaced font for code readability */
+    font-size: 12px;
+    z-index: 10;
+    background-color: rgba(0, 0, 0, 0.6);
+    padding: 5px 8px;
+    border-radius: 5px;
+    border: 1px solid #00AA00;
+    text-shadow: 0 0 3px rgba(0, 255, 0, 0.5);
+    line-height: 1.5; /* Spacing between lines */
+    pointer-events: none; /* Allow clicks to pass through */
+    text-align: right; /* Align text within debug box to the right */
+}
+
+
+/* In-game messages or notifications */
+#message-container {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: white;
+    font-size: 24px;
+    text-align: center;
+    text-shadow: 2px 2px 5px rgba(0, 0, 0, 0.8);
+    z-index: 20;
+    pointer-events: none; /* Allow clicks to pass through */
+    opacity: 0; /* Hidden by default */
+    transition: opacity 0.5s ease-in-out;
+}
+.message-active {
+    opacity: 1; /* Show message */
+}
+
+/* Styling for the level-up/skill selection menu */
+#skill-selection-menu {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background-color: rgba(20, 20, 20, 0.95); /* Nearly opaque dark background */
+    border: 2px solid #444;
+    border-radius: 10px;
+    padding: 20px;
+    color: white;
+    text-align: center;
+    z-index: 100;
+    box-shadow: 0 0 20px rgba(0, 0, 0, 0.7);
+    display: none; /* Hidden by default */
+    width: 80%;
+    max-width: 400px;
+    max-height: 80%;
+    overflow-y: auto; /* Enable scrolling for many skills */
+}
+
+#skill-selection-menu h2 {
+    margin-top: 0;
+    color: #FFD700; /* Gold for title */
+    margin-bottom: 15px;
+    font-size: 24px;
+}
+
+.skill-option {
+    background-color: #333;
+    border: 1px solid #555;
+    border-radius: 5px;
+    padding: 10px;
+    margin-bottom: 10px;
+    cursor: pointer;
+    transition: background-color 0.2s, transform 0.1s;
+    text-align: left;
+}
+
+.skill-option:hover {
+    background-color: #444;
+    transform: translateY(-2px);
+}
+
+.skill-option h3 {
+    color: #FF8C00; /* Orange for skill names */
+    margin-top: 0;
+    margin-bottom: 5px;
+    font-size: 18px;
+}
+
+.skill-option p {
+    font-size: 14px;
+    color: #C0C0C0;
+}
