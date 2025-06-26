@@ -1,31 +1,4 @@
 // Skills system for the isometric game
-// This function returns all skills with their properties and apply functions
-
-// HOW TO ADD A NEW SKILL:
-// 1. Add a new skill object to the return statement below
-// 2. Give it a unique id, name, and description
-// 3. Set the type: 'passive', 'weapon_upgrade', 'weapon_type', or 'weapon_modifier'
-// 4. If it's stackable, add maxStacks and currentStacks (starting at 0)
-// 5. If it has requirements, add a requires function that returns true/false
-// 6. Add the apply function that implements the skill's effect
-// 7. For final rank bonuses, check if currentStacks === maxStacks - 1
-// 8. For active effects, you'll need to add the logic in game.js update() method
-
-// Example new skill:
-// teleport_dodge: {
-//     id: 'teleport_dodge',
-//     name: 'Phase Shift',
-//     description: 'Teleport away when hit (5s cooldown, 2s on final rank)',
-//     type: 'passive',
-//     maxStacks: 5,
-//     currentStacks: 0,
-//     requires: () => game.player.level >= 20,
-//     apply: () => {
-//         const isLastRank = game.allSkills.teleport_dodge.currentStacks === game.allSkills.teleport_dodge.maxStacks - 1;
-//         if (!game.player.teleportCooldown) game.player.teleportCooldown = 0;
-//         game.player.teleportCooldown = isLastRank ? 2 : 5;
-//     }
-// },
 
 function createSkills(game) {
     return {
@@ -179,9 +152,11 @@ function createSkills(game) {
             name: 'Incendiary Rounds',
             description: 'Bullets create fiery explosions (Requires Level 10)',
             type: 'weapon_modifier',
-            requires: () => game.player.weapon.level >= 2 && !game.player.weapon.explosive && game.player.level >= 10,
+            requires: () => game.player.weapon.level >= 2 && game.player.level >= 10,
             apply: () => {
-                game.player.weapon.explosive = true;
+                game.player.weapon.bulletModifiers.push({
+                    onFire: (bullet) => { bullet.explosive = true; }
+                });
             }
         },
         piercing_bullets: {
@@ -189,9 +164,99 @@ function createSkills(game) {
             name: 'Armor Piercing',
             description: 'Bullets tear through multiple zombies (Requires Level 6)',
             type: 'weapon_modifier',
-            requires: () => game.player.weapon.level >= 2 && !game.player.weapon.piercing && game.player.level >= 6,
+            requires: () => game.player.weapon.level >= 2 && game.player.level >= 6,
             apply: () => {
-                game.player.weapon.piercing = true;
+                game.player.weapon.bulletModifiers.push({
+                    onFire: (bullet) => { bullet.piercing = true; }
+                });
+            }
+        },
+        // Example: Freezing bullets, using onFire/onHit modular pattern
+        freeze_bullets: {
+            id: 'freeze_bullets',
+            name: 'Cryo Ammo',
+            description: 'Bullets freeze enemies',
+            type: 'weapon_modifier',
+            apply: () => {
+                game.player.weapon.bulletModifiers.push({
+                    onFire: (bullet) => { bullet.freeze = true; },
+                    onHit: (enemy, bullet) => {
+                        if (bullet.freeze) enemy.frozen = true;
+                    }
+                });
+            }
+        },
+        // Example: Chain lightning, using onHit modular pattern
+        chain_lightning: {
+            id: 'chain_lightning',
+            name: 'Chain Lightning',
+            description: '10% chance for bullets to chain to 2 enemies (5 on final rank)',
+            type: 'weapon_modifier',
+            maxStacks: 8,
+            currentStacks: 0,
+            requires: () => game.player.level >= 15 && game.player.weapon.level >= 3,
+            apply: () => {
+                const isLastRank = game.allSkills.chain_lightning && game.allSkills.chain_lightning.currentStacks === game.allSkills.chain_lightning.maxStacks - 1;
+                const chance = 0.10;
+                const chains = isLastRank ? 5 : 2;
+                game.player.weapon.bulletModifiers.push({
+                    onHit: (enemy, bullet, gameRef) => {
+                        if (Math.random() < chance) {
+                            // Find other nearby enemies and zap them
+                            let hitCount = 0;
+                            for (const other of gameRef.enemies) {
+                                if (other !== enemy && hitCount < chains) {
+                                    const dx = other.x - enemy.x;
+                                    const dy = other.y - enemy.y;
+                                    if ((dx * dx + dy * dy) < 4) { // within 2 tiles
+                                        other.health -= bullet.damage * 0.5;
+                                        // Optionally create zap effect: gameRef.createHitEffect(other.x, other.y, false);
+                                        hitCount++;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+        },
+        // Example: Ricochet (for illustration)
+        ricochet_bullets: {
+            id: 'ricochet_bullets',
+            name: 'Ricochet',
+            description: 'Bullets bounce off enemies once',
+            type: 'weapon_modifier',
+            apply: () => {
+                game.player.weapon.bulletModifiers.push({
+                    onHit: (enemy, bullet, gameRef) => {
+                        if (!bullet._ricocheted) {
+                            // Find nearest enemy other than `enemy`
+                            let minDist = Infinity, target = null;
+                            for (const other of gameRef.enemies) {
+                                if (other !== enemy) {
+                                    const dx = other.x - bullet.x;
+                                    const dy = other.y - bullet.y;
+                                    const d = dx * dx + dy * dy;
+                                    if (d < minDist) {
+                                        minDist = d;
+                                        target = other;
+                                    }
+                                }
+                            }
+                            if (target) {
+                                // Change bullet direction toward new enemy
+                                const dx = target.x - bullet.x;
+                                const dy = target.y - bullet.y;
+                                const len = Math.sqrt(dx * dx + dy * dy);
+                                bullet.direction.x = dx / len;
+                                bullet.direction.y = dy / len;
+                                bullet._ricocheted = true;
+                                // Prevent bullet from being destroyed on this hit
+                                bullet.piercing = true;
+                            }
+                        }
+                    }
+                });
             }
         },
         dodge_chance: {
@@ -213,8 +278,9 @@ function createSkills(game) {
             name: 'Stopping Power',
             description: 'Bullets push zombies back slightly (Requires Level 5)',
             type: 'weapon_modifier',
-            requires: () => game.player.level >= 5 && !game.player.weapon.knockback,
+            requires: () => game.player.level >= 5,
             apply: () => {
+                // Handled in game.js based on weapon property, but could also be a bullet modifier if desired
                 game.player.weapon.knockback = true;
             }
         },
@@ -277,53 +343,13 @@ function createSkills(game) {
                 game.player.grenadeChance = Math.min(0.35, game.player.grenadeChance + grenadeAmount);
             }
         },
-        
-        // Example: To add a new skill, just add it here:
-        // rapid_reload: {
-        //     id: 'rapid_reload',
-        //     name: 'Rapid Reload',
-        //     description: 'Instant reload every 5 kills (3 kills on final rank)',
-        //     type: 'passive',
-        //     maxStacks: 5,
-        //     currentStacks: 0,
-        //     apply: () => {
-        //         const isLastRank = game.allSkills.rapid_reload.currentStacks === game.allSkills.rapid_reload.maxStacks - 1;
-        //         if (!game.player.rapidReload) game.player.rapidReload = 0;
-        //         game.player.rapidReload = isLastRank ? 3 : 5;
-        //     }
-        // },
-        
-        // Another example with more complex logic:
-        // chain_lightning: {
-        //     id: 'chain_lightning',
-        //     name: 'Chain Lightning',
-        //     description: '10% chance for bullets to chain to 2 enemies (5 on final rank)',
-        //     type: 'weapon_modifier',
-        //     maxStacks: 8,
-        //     currentStacks: 0,
-        //     requires: () => game.player.level >= 15 && game.player.weapon.level >= 3,
-        //     apply: () => {
-        //         const isLastRank = game.allSkills.chain_lightning.currentStacks === game.allSkills.chain_lightning.maxStacks - 1;
-        //         if (!game.player.weapon.chainLightning) {
-        //             game.player.weapon.chainLightning = {
-        //                 chance: 0,
-        //                 chains: 0
-        //             };
-        //         }
-        //         game.player.weapon.chainLightning.chance += 0.10;
-        //         game.player.weapon.chainLightning.chains = isLastRank ? 5 : 2;
-        //     }
-        // },
     };
 }
 
 // Export the createSkills function
-// Works in both browser and Node.js environments
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = createSkills;
 }
-
-// For browser usage
 if (typeof window !== 'undefined') {
     window.createSkills = createSkills;
 }
