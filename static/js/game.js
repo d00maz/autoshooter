@@ -1,7 +1,11 @@
 // Main game class
+// Note: This file requires skills.js to be loaded first. In your HTML:
+// <script src="skills.js"></script>
+// <script src="game.js"></script>
 class IsometricGame {
     constructor() {
         this.canvas = document.getElementById('game-canvas');
+	this.canvas.style.filter = 'brightness(1.4)';
         this.ctx = this.canvas.getContext('2d');
         this.lastTime = 0;
         this.accumulated = 0;
@@ -24,12 +28,12 @@ class IsometricGame {
                 width: 0.7,
                 height: 0.7
             },
-            speed: 1.2, // Reduced from 1.5
+            speed: 1.5, // Increased from 1.2 for better mobility
             direction: { x: 0, y: 0 },
             facing: 0,
             facingAngle: 0,
-            health: 80, // Reduced from 100
-            maxHealth: 80, // Reduced from 100
+            health: 100, // Increased starting health
+            maxHealth: 100, // Increased starting health
             isAttacking: false,
             attackCooldown: 0,
             attackRange: this.tileSize * 1.5,
@@ -42,7 +46,7 @@ class IsometricGame {
                 angle: 0,
                 fireRate: 0.6, // Increased from 0.6 (slower firing)
                 fireTimer: 0,
-                damage: 25, // Reduced from 10
+                damage: 30, // Increased base damage
                 bulletSpeed: 8, // Reduced from 12
                 autoFire: true,
                 type: 'normal',
@@ -55,225 +59,31 @@ class IsometricGame {
         this.basePlayerSpeed = this.player.speed;
         this.enemySpeedRatio = 0.5; // Increased from 0.4 to compensate for slower player
 
-        this.allSkills = {
-            health_boost: {
-                id: 'health_boost',
-                name: 'First Aid Kit',
-                description: 'Find medical supplies (+15 health)',
-                type: 'passive',
-                maxStacks: 15,
-                currentStacks: 0,
-                apply: () => {
-                    this.player.maxHealth += 15;
-                    this.player.health += 15;
-                    document.getElementById('health-value').style.width =
-                        `${(this.player.health / this.player.maxHealth) * 100}%`;
-                }
-            },
-            speed_boost: {
-                id: 'speed_boost',
-                name: 'Adrenaline Rush',
-                description: 'Move 10% faster when escaping zombies',
-                type: 'passive',
-                maxStacks: 8,
-                currentStacks: 0,
-                apply: () => {
-                    this.player.speed *= 1.10;
-                    this.updateEnemySpeeds();
-                }
-            },
-            health_regen: {
-                id: 'health_regen',
-                name: 'Survival Instinct',
-                description: 'Slowly heal wounds over time (+0.5 HP/sec)',
-                type: 'passive',
-                maxStacks: 5,
-                currentStacks: 0,
-                apply: () => {
-                    if (!this.player.healthRegen) this.player.healthRegen = 0;
-                    this.player.healthRegen += 0.5;
-                }
-            },
-            damage_resistance: {
-                id: 'damage_resistance',
-                name: 'Reinforced Armor',
-                description: 'Take 5% less damage from zombie attacks',
-                type: 'passive',
-                maxStacks: 8,
-                currentStacks: 0,
-                apply: () => {
-                    if (!this.player.damageResistance) this.player.damageResistance = 0;
-                    this.player.damageResistance = Math.min(0.4, this.player.damageResistance + 0.05);
-                }
-            },
-            damage_up: {
-                id: 'damage_up',
-                name: 'Hollow Points',
-                description: 'More stopping power (+3 damage)',
-                type: 'weapon_upgrade',
-                maxStacks: 15,
-                currentStacks: 0,
-                apply: () => {
-                    this.player.weapon.damage += 3;
-                }
-            },
-            fire_rate_up: {
-                id: 'fire_rate_up',
-                name: 'Hair Trigger',
-                description: 'Shoot 15% faster',
-                type: 'weapon_upgrade',
-                maxStacks: 8,
-                currentStacks: 0,
-                apply: () => {
-                    this.player.weapon.fireRate *= 0.85;
-                }
-            },
-            bullet_speed_up: {
-                id: 'bullet_speed_up',
-                name: 'High Velocity Rounds',
-                description: 'Bullets travel 20% faster',
-                type: 'weapon_upgrade',
-                maxStacks: 8,
-                currentStacks: 0,
-                apply: () => {
-                    this.player.weapon.bulletSpeed *= 1.20;
-                }
-            },
-            double_shot: {
-                id: 'double_shot',
-                name: 'Dual Barrel',
-                description: 'Modified weapon fires two bullets (Requires Level 3)',
-                type: 'weapon_type',
-                requires: () => this.player.weapon.level === 1 && this.player.level >= 3,
-                apply: () => {
-                    this.player.weapon.type = 'double';
-                    this.player.weapon.level = 2;
-                    document.getElementById('weapon-text').textContent = 'Weapon: Dual Barrel';
-                }
-            },
-            triple_shot: {
-                id: 'triple_shot',
-                name: 'Burst Fire',
-                description: 'Three-round burst weapon (Requires Level 8)',
-                type: 'weapon_type',
-                requires: () => this.player.weapon.level === 2 && this.player.level >= 8,
-                apply: () => {
-                    this.player.weapon.type = 'triple';
-                    this.player.weapon.level = 3;
-                    document.getElementById('weapon-text').textContent = 'Weapon: Burst Fire';
-                }
-            },
-            quad_shot: {
-                id: 'quad_shot',
-                name: 'Makeshift Turret',
-                description: 'Jury-rigged quad barrel (Requires Level 15)',
-                type: 'weapon_type',
-                requires: () => this.player.weapon.level === 3 && this.player.level >= 15,
-                apply: () => {
-                    this.player.weapon.type = 'quad';
-                    this.player.weapon.level = 4;
-                    document.getElementById('weapon-text').textContent = 'Weapon: Makeshift Turret';
-                }
-            },
-            shotgun: {
-                id: 'shotgun',
-                name: 'Combat Shotgun',
-                description: 'Devastating close-range spread (Requires Level 25)',
-                type: 'weapon_type',
-                requires: () => this.player.weapon.level === 4 && this.player.level >= 25,
-                apply: () => {
-                    this.player.weapon.type = 'shotgun';
-                    this.player.weapon.level = 5;
-                    document.getElementById('weapon-text').textContent = 'Weapon: Combat Shotgun';
-                }
-            },
-            explosive_rounds: {
-                id: 'explosive_rounds',
-                name: 'Incendiary Rounds',
-                description: 'Bullets create fiery explosions (Requires Level 10)',
-                type: 'weapon_modifier',
-                requires: () => this.player.weapon.level >= 2 && !this.player.weapon.explosive && this.player.level >= 10,
-                apply: () => {
-                    this.player.weapon.explosive = true;
-                }
-            },
-            piercing_bullets: {
-                id: 'piercing_bullets',
-                name: 'Armor Piercing',
-                description: 'Bullets tear through multiple zombies (Requires Level 6)',
-                type: 'weapon_modifier',
-                requires: () => this.player.weapon.level >= 2 && !this.player.weapon.piercing && this.player.level >= 6,
-                apply: () => {
-                    this.player.weapon.piercing = true;
-                }
-            },
-            dodge_chance: {
-                id: 'dodge_chance',
-                name: 'Evasive Maneuvers',
-                description: '10% chance to dodge zombie attacks',
-                type: 'passive',
-                maxStacks: 5,
-                currentStacks: 0,
-                apply: () => {
-                    if (!this.player.dodgeChance) this.player.dodgeChance = 0;
-                    this.player.dodgeChance = Math.min(0.5, this.player.dodgeChance + 0.1);
-                }
-            },
-            knockback: {
-                id: 'knockback',
-                name: 'Stopping Power',
-                description: 'Bullets push zombies back slightly (Requires Level 5)',
-                type: 'weapon_modifier',
-                requires: () => this.player.level >= 5 && !this.player.weapon.knockback,
-                apply: () => {
-                    this.player.weapon.knockback = true;
-                }
-            },
-            life_steal: {
-                id: 'life_steal',
-                name: 'Blood Transfusion',
-                description: 'Heal 1 HP for every 10 zombies killed (Requires Level 7)',
-                type: 'passive',
-                maxStacks: 3,
-                currentStacks: 0,
-                requires: () => this.player.level >= 7,
-                apply: () => {
-                    if (!this.player.lifeSteal) this.player.lifeSteal = 0;
-                    this.player.lifeSteal += 1;
-                    if (!this.player.killCount) this.player.killCount = 0;
-                }
-            },
-            critical_chance: {
-                id: 'critical_chance',
-                name: 'Sharpshooter',
-                description: '5% chance for double damage',
-                type: 'weapon_upgrade',
-                maxStacks: 8,
-                currentStacks: 0,
-                apply: () => {
-                    if (!this.player.weapon.critChance) this.player.weapon.critChance = 0;
-                    this.player.weapon.critChance = Math.min(0.4, this.player.weapon.critChance + 0.05);
-                }
-            },
-            boss_damage: {
-                id: 'boss_damage',
-                name: 'Giant Killer',
-                description: 'Deal 25% more damage to bosses (Requires Level 12)',
-                type: 'passive',
-                maxStacks: 4,
-                currentStacks: 0,
-                requires: () => this.player.level >= 12,
-                apply: () => {
-                    if (!this.player.bossDamageBonus) this.player.bossDamageBonus = 0;
-                    this.player.bossDamageBonus += 0.25;
-                }
-            },
-        };
+        // Load skills from external file
+        if (typeof createSkills !== 'undefined') {
+            this.allSkills = createSkills(this);
+            
+            // You can add custom skills here for testing without editing skills.js:
+            // this.allSkills.my_test_skill = {
+            //     id: 'my_test_skill',
+            //     name: 'Test Skill',
+            //     description: 'Testing new skill ideas',
+            //     type: 'passive',
+            //     maxStacks: 3,
+            //     currentStacks: 0,
+            //     apply: () => { console.log('Test skill applied!'); }
+            // };
+        } else {
+            console.error('Skills system not loaded! Make sure skills.js is included before game.js');
+            this.allSkills = {};
+        }
 
         this.availableSkills = [];
         this.gamePaused = false;
         this.explosions = [];
         this.bullets = [];
+        this.grenades = []; // Array for grenades
+        this.hitEffects = []; // NEW: Array for hit effect particles
         this.camera = {
             x: this.player.x,
             y: this.player.y,
@@ -284,7 +94,7 @@ class IsometricGame {
         this.enemySpawnTimer = 0;
         this.enemySpawnRate = 2.5; // Slower initial spawn rate
         this.enemiesPerSpawn = 1; // Start with fewer enemies
-        this.maxEnemies = 50;
+        this.maxEnemies = 75;
         this.survivalTime = 0;
         this.showDebug = false;
         this.bossSpawnTimer = 60; // First boss at 1 minute
@@ -361,6 +171,99 @@ class IsometricGame {
         return true; // Not blocked
     }
 
+    // NEW: Create hit effect particles
+    createHitEffect(x, y, isCritical = false) {
+        const particleCount = isCritical ? 12 : 6;
+        for (let i = 0; i < particleCount; i++) {
+            const angle = (Math.PI * 2 * i) / particleCount + Math.random() * 0.5;
+            const speed = 2 + Math.random() * 3;
+            this.hitEffects.push({
+                x: x,
+                y: y,
+                vx: Math.cos(angle) * speed,
+                vy: Math.sin(angle) * speed,
+                life: 0.3,
+                maxLife: 0.3,
+                size: isCritical ? 4 : 3,
+                color: isCritical ? '#ffff00' : '#ff4444'
+            });
+        }
+    }
+
+    // Find closest enemy behind the player
+    findClosestEnemyBehind() {
+        if (this.enemies.length === 0) return null;
+        
+        const aimDir = this.player.weapon.aimDirection;
+        const aimAngle = Math.atan2(aimDir.y, aimDir.x);
+        // Get the opposite angle (behind the player)
+        const behindAngle = aimAngle + Math.PI;
+        
+        let closestEnemy = null;
+        let smallestAngleDiff = Math.PI; // Max possible angle difference
+        
+        for (const enemy of this.enemies) {
+            const dx = enemy.x - this.player.x;
+            const dy = enemy.y - this.player.y;
+            const enemyAngle = Math.atan2(dy, dx);
+            
+            // Calculate angle difference from behind angle
+            let angleDiff = Math.abs(enemyAngle - behindAngle);
+            // Normalize to [-PI, PI]
+            if (angleDiff > Math.PI) {
+                angleDiff = 2 * Math.PI - angleDiff;
+            }
+            
+            // Check if enemy is roughly behind (within 90 degrees of behind angle)
+            if (angleDiff < Math.PI / 2 && angleDiff < smallestAngleDiff) {
+                smallestAngleDiff = angleDiff;
+                closestEnemy = enemy;
+            }
+        }
+        
+        // If no enemy behind, just get the closest one overall
+        if (!closestEnemy && this.enemies.length > 0) {
+            let minDist = Infinity;
+            for (const enemy of this.enemies) {
+                const dx = enemy.x - this.player.x;
+                const dy = enemy.y - this.player.y;
+                const dist = dx * dx + dy * dy;
+                if (dist < minDist) {
+                    minDist = dist;
+                    closestEnemy = enemy;
+                }
+            }
+        }
+        
+        return closestEnemy;
+    }
+
+    // Throw a grenade at target
+    throwGrenade(targetEnemy) {
+        if (!targetEnemy) return;
+        
+        const dx = targetEnemy.x - this.player.x;
+        const dy = targetEnemy.y - this.player.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        
+        // Normalize direction
+        const dirX = dx / distance;
+        const dirY = dy / distance;
+        
+        this.grenades.push({
+            x: this.player.x,
+            y: this.player.y,
+            targetX: targetEnemy.x,
+            targetY: targetEnemy.y,
+            dirX: dirX,
+            dirY: dirY,
+            speed: 5, // Grenade travel speed
+            damage: this.player.weapon.damage * 3, // Triple weapon damage
+            boundingBox: { width: 0.3, height: 0.3 },
+            rotation: 0,
+            rotationSpeed: 10
+        });
+    }
 
     // --- CORE GAME LOGIC (UNCHANGED SECTIONS OMITTED FOR BREVITY) ---
 
@@ -445,7 +348,7 @@ class IsometricGame {
     levelUp() {
         this.player.level++;
         this.player.experience -= this.player.experienceToNextLevel;
-        this.player.experienceToNextLevel = Math.floor(this.player.experienceToNextLevel * 1.2); // Changed from 1.2 to 1.5
+        this.player.experienceToNextLevel = Math.floor(this.player.experienceToNextLevel * 1.15); // Reduced from 1.2 for faster leveling
         document.getElementById('level-text').textContent = `Level ${this.player.level}`;
         this.showLevelUpMessage();
         this.gamePaused = true;
@@ -535,6 +438,11 @@ class IsometricGame {
             if (skill.type === 'weapon_type') borderColor = '#e74c3c';
             if (skill.type === 'weapon_modifier') borderColor = '#f39c12';
             if (skill.type === 'passive') borderColor = '#27ae60';
+            
+            // Special border for skills that will max out
+            if (skill.maxStacks && skill.currentStacks === skill.maxStacks - 1) {
+                borderColor = '#ffd700'; // Gold border for final rank
+            }
             skillOption.style = `
                 background-color: rgba(52, 152, 219, 0.3);
                 border: 2px solid ${borderColor};
@@ -542,14 +450,21 @@ class IsometricGame {
                 padding: 15px;
                 cursor: pointer;
                 transition: all 0.2s ease;
+                ${skill.maxStacks && skill.currentStacks === skill.maxStacks - 1 ? 'box-shadow: 0 0 10px ' + borderColor + ';' : ''}
             `;
             let stackInfo = '';
             if (skill.maxStacks) {
-                stackInfo = ` (${skill.currentStacks}/${skill.maxStacks})`;
+                const isMaxed = skill.currentStacks >= skill.maxStacks;
+                stackInfo = isMaxed ? ' <span style="color: #ffd700;">★MAX★</span>' : ` (${skill.currentStacks}/${skill.maxStacks})`;
             }
+            let finalRankNote = '';
+            if (skill.maxStacks && skill.currentStacks === skill.maxStacks - 1) {
+                finalRankNote = '<br><span style="color: #ffd700;">⚡ FINAL RANK - POWERFUL BONUS! ⚡</span>';
+            }
+            
             skillOption.innerHTML = `
                 <h3>${skill.name}${stackInfo}</h3>
-                <p>${skill.description}</p>
+                <p>${skill.description}${finalRankNote}</p>
             `;
             skillOption.addEventListener('mouseover', () => {
                 skillOption.style.backgroundColor = 'rgba(52, 152, 219, 0.5)';
@@ -572,7 +487,14 @@ class IsometricGame {
             skill.currentStacks++;
         }
         skill.apply();
-        this.showNotification(`New skill acquired: ${skill.name}`);
+        
+        // Check if skill is now maxed
+        if (skill.maxStacks && skill.currentStacks === skill.maxStacks) {
+            this.showNotification(`${skill.name} MAXED! Final rank bonus applied!`);
+        } else {
+            this.showNotification(`New skill acquired: ${skill.name}`);
+        }
+        
         this.gamePaused = false;
     }
 
@@ -617,7 +539,7 @@ class IsometricGame {
             const distance = Math.sqrt(dx * dx + dy * dy) * this.tileSize; // convert to pixels for radius check
             if (distance < explosion.maxRadius) {
                 const damageMultiplier = 1 - (distance / explosion.maxRadius);
-                enemy.health -= this.player.weapon.damage * damageMultiplier;
+                enemy.health -= this.player.weapon.damage * 1.5 * damageMultiplier; // Increased explosion damage
             }
         }
     }
@@ -773,7 +695,7 @@ class IsometricGame {
                 zombieStats = { 
                     health: Math.floor(50 * difficultyMultiplier), 
                     speed: baseZombieSpeed * (1 - speedVariation / 2 + Math.random() * speedVariation), 
-                    damage: 15, 
+                    damage: 20, // Increased from 15
                     color: '#4a5d4a', 
                     size: 1.0 
                 };
@@ -781,7 +703,7 @@ class IsometricGame {
                 zombieStats = { 
                     health: Math.floor(30 * difficultyMultiplier), 
                     speed: baseZombieSpeed * 1.8, 
-                    damage: 10, 
+                    damage: 15, // Increased from 10
                     color: '#7a4a4a', 
                     size: 0.8 
                 };
@@ -789,7 +711,7 @@ class IsometricGame {
                 zombieStats = { 
                     health: Math.floor(150 * difficultyMultiplier), 
                     speed: baseZombieSpeed * 0.5, 
-                    damage: 25, 
+                    damage: 35, // Increased from 25
                     color: '#3a3a5a', 
                     size: 1.3 
                 };
@@ -812,7 +734,8 @@ class IsometricGame {
                 speedVariation: speedVariation,
                 color: zombieStats.color,
                 size: zombieStats.size,
-                facing: 0
+                facing: 0,
+                hitFlash: 0 // NEW: For hit flash effect
             });
         }
     }
@@ -841,15 +764,16 @@ class IsometricGame {
                 width: 1.8,
                 height: 1.8
             },
-            health: Math.floor(500 * bossMultiplier),
-            maxHealth: Math.floor(500 * bossMultiplier),
+            health: Math.floor(800 * bossMultiplier), // Increased from 500
+            maxHealth: Math.floor(800 * bossMultiplier), // Increased from 500
             speed: this.player.speed * 0.3,
-            damage: 40,
+            damage: 50, // Increased from 40
             speedVariation: 0,
             color: '#8b0000',
             size: 2.5,
             facing: 0,
-            isBoss: true
+            isBoss: true,
+            hitFlash: 0 // NEW: For hit flash effect
         };
         
         this.enemies.push(boss);
@@ -917,11 +841,12 @@ class IsometricGame {
                 // Use new AABB collision check
                 if (this.checkAABBCollision(bullet, enemy)) {
                     let damage = bullet.damage;
+                    let isCritical = false;
                     
                     // Apply critical hit
                     if (this.player.weapon.critChance && Math.random() < this.player.weapon.critChance) {
-                        damage *= 2;
-                        // Could add visual effect for critical hits
+                        damage *= 2.5; // Increased from 2
+                        isCritical = true;
                     }
                     
                     // Apply boss damage bonus
@@ -930,6 +855,10 @@ class IsometricGame {
                     }
                     
                     enemy.health -= damage;
+                    enemy.hitFlash = 0.15; // NEW: Set hit flash duration
+                    
+                    // NEW: Create hit effect at impact point
+                    this.createHitEffect(bullet.x, bullet.y, isCritical);
                     
                     // Apply knockback if enabled
                     if (this.player.weapon.knockback) {
@@ -949,21 +878,75 @@ class IsometricGame {
             }
         }
 
+        // --- Grenade Update ---
+        for (let i = this.grenades.length - 1; i >= 0; i--) {
+            const grenade = this.grenades[i];
+            grenade.x += grenade.dirX * grenade.speed * dt;
+            grenade.y += grenade.dirY * grenade.speed * dt;
+            grenade.rotation += grenade.rotationSpeed * dt;
+            
+            // Check if grenade reached target
+            const dx = grenade.targetX - grenade.x;
+            const dy = grenade.targetY - grenade.y;
+            const distToTarget = Math.sqrt(dx * dx + dy * dy);
+            
+            if (distToTarget < 0.5) {
+                // Create explosion with grenade's damage
+                const explosion = {
+                    x: grenade.x,
+                    y: grenade.y,
+                    radius: 0,
+                    maxRadius: this.tileSize * 2.5, // Slightly larger explosion
+                    lifeTime: 0.3,
+                    maxLifeTime: 0.3,
+                    color: '#ff6600'
+                };
+                this.explosions.push(explosion);
+                
+                // Deal damage to nearby enemies
+                for (const enemy of this.enemies) {
+                    if (!enemy) continue;
+                    const dx = (enemy.x - grenade.x);
+                    const dy = (enemy.y - grenade.y);
+                    const distance = Math.sqrt(dx * dx + dy * dy) * this.tileSize;
+                    if (distance < explosion.maxRadius) {
+                        const damageMultiplier = 1 - (distance / explosion.maxRadius);
+                        enemy.health -= grenade.damage * damageMultiplier;
+                    }
+                }
+                
+                this.grenades.splice(i, 1);
+            }
+        }
+
         // --- Enemy Update & Collision ---
         let enemiesToRemove = new Set();
         for (const enemy of this.enemies) {
+            // NEW: Update hit flash
+            if (enemy.hitFlash > 0) {
+                enemy.hitFlash -= dt;
+            }
+            
             if (enemy.health <= 0) {
                 this.player.score += 10;
                 
+                // Check for grenade chance on kill
+                if (this.player.grenadeChance && Math.random() < this.player.grenadeChance) {
+                    const targetEnemy = this.findClosestEnemyBehind();
+                    if (targetEnemy) {
+                        this.throwGrenade(targetEnemy);
+                    }
+                }
+                
                 // Different rewards for bosses
                 if (enemy.isBoss) {
-                    this.gainExperience(500);
-                    this.player.health = Math.min(this.player.maxHealth, this.player.health + 20);
+                    this.gainExperience(1000); // Increased from 500
+                    this.player.health = Math.min(this.player.maxHealth, this.player.health + 50); // Increased from 20
                     document.getElementById('health-value').style.width =
                         `${(this.player.health / this.player.maxHealth) * 100}%`;
-                    this.showNotification('Boss defeated! +20 HP');
+                    this.showNotification('Boss defeated! +50 HP');
                 } else {
-                    this.gainExperience(5 + Math.floor((enemy.maxHealth || 0) / 30));
+                    this.gainExperience(10 + Math.floor((enemy.maxHealth || 0) / 20)); // Increased base from 5 to 10
                 }
                 
                 // Life steal mechanic
@@ -1025,6 +1008,19 @@ class IsometricGame {
             document.getElementById('score').textContent = `Score: ${this.player.score}`;
         }
 
+        // NEW: Update hit effect particles
+        for (let i = this.hitEffects.length - 1; i >= 0; i--) {
+            const particle = this.hitEffects[i];
+            particle.x += particle.vx * dt;
+            particle.y += particle.vy * dt;
+            particle.vx *= 0.95; // Friction
+            particle.vy *= 0.95;
+            particle.life -= dt;
+            
+            if (particle.life <= 0) {
+                this.hitEffects.splice(i, 1);
+            }
+        }
 
         // --- Explosion update ---
         for (let i = this.explosions.length - 1; i >= 0; i--) {
@@ -1099,6 +1095,25 @@ class IsometricGame {
         const playerScreenX = (this.player.x - this.camera.x) * this.tileSize + this.canvas.width / 2;
         const playerScreenY = (this.player.y - this.camera.y) * this.tileSize + this.canvas.height / 2;
         this.drawPlayer(playerScreenX, playerScreenY);
+        
+        // NEW: Draw hit effect particles
+        for (const particle of this.hitEffects) {
+            const screenX = (particle.x - this.camera.x) * this.tileSize + this.canvas.width / 2;
+            const screenY = (particle.y - this.camera.y) * this.tileSize + this.canvas.height / 2;
+            
+            this.ctx.globalAlpha = particle.life / particle.maxLife;
+            this.ctx.fillStyle = particle.color;
+            this.ctx.shadowColor = particle.color;
+            this.ctx.shadowBlur = 10;
+            
+            this.ctx.beginPath();
+            this.ctx.arc(screenX, screenY, particle.size, 0, Math.PI * 2);
+            this.ctx.fill();
+            
+            this.ctx.shadowBlur = 0;
+            this.ctx.globalAlpha = 1.0;
+        }
+        
         for (const explosion of this.explosions) {
             const screenX = (explosion.x - this.camera.x) * this.tileSize + this.canvas.width / 2;
             const screenY = (explosion.y - this.camera.y) * this.tileSize + this.canvas.height / 2;
@@ -1113,6 +1128,7 @@ class IsometricGame {
             this.ctx.globalAlpha = 1.0;
         }
         this.drawBullets();
+        this.drawGrenades();
         this.drawMinimap();
     }
     drawBullets() {
@@ -1127,6 +1143,34 @@ class IsometricGame {
             this.ctx.fill();
         }
         this.ctx.shadowBlur = 0;
+    }
+    drawGrenades() {
+        for (const grenade of this.grenades) {
+            const screenX = (grenade.x - this.camera.x) * this.tileSize + this.canvas.width / 2;
+            const screenY = (grenade.y - this.camera.y) * this.tileSize + this.canvas.height / 2;
+            
+            this.ctx.save();
+            this.ctx.translate(screenX, screenY);
+            this.ctx.rotate(grenade.rotation);
+            
+            // Draw grenade body
+            this.ctx.fillStyle = '#556b2f';
+            this.ctx.fillRect(-this.tileSize / 6, -this.tileSize / 10, this.tileSize / 3, this.tileSize / 5);
+            
+            // Draw grenade pin/details
+            this.ctx.fillStyle = '#333';
+            this.ctx.fillRect(-this.tileSize / 12, -this.tileSize / 8, this.tileSize / 6, this.tileSize / 20);
+            
+            this.ctx.restore();
+            
+            // Add trailing effect
+            this.ctx.globalAlpha = 0.3;
+            this.ctx.fillStyle = '#ff6600';
+            this.ctx.beginPath();
+            this.ctx.arc(screenX, screenY, this.tileSize / 4, 0, Math.PI * 2);
+            this.ctx.fill();
+            this.ctx.globalAlpha = 1.0;
+        }
     }
     drawMinimap() {
         const mapSize = 100;
@@ -1172,7 +1216,13 @@ class IsometricGame {
             this.ctx.shadowBlur = 20;
         }
         
-        this.ctx.fillStyle = enemy.color;
+        // NEW: Apply hit flash effect
+        if (enemy.hitFlash > 0) {
+            this.ctx.fillStyle = '#ffffff';
+        } else {
+            this.ctx.fillStyle = enemy.color;
+        }
+        
         this.ctx.beginPath();
         this.ctx.arc(x, y, this.tileSize / 3 * enemy.size, 0, Math.PI * 2);
         this.ctx.fill();
@@ -1185,15 +1235,19 @@ class IsometricGame {
             this.ctx.shadowBlur = 0;
         }
         
-        this.ctx.fillStyle = '#ff0000';
-        const eyeOffset = this.tileSize / 8 * enemy.size;
-        const eyeSize = this.tileSize / 20 * enemy.size;
-        this.ctx.beginPath();
-        this.ctx.arc(x - eyeOffset, y - eyeOffset, eyeSize, 0, Math.PI * 2);
-        this.ctx.fill();
-        this.ctx.beginPath();
-        this.ctx.arc(x + eyeOffset, y - eyeOffset, eyeSize, 0, Math.PI * 2);
-        this.ctx.fill();
+        // Only draw eyes if not hit flashing
+        if (enemy.hitFlash <= 0) {
+            this.ctx.fillStyle = '#ff0000';
+            const eyeOffset = this.tileSize / 8 * enemy.size;
+            const eyeSize = this.tileSize / 20 * enemy.size;
+            this.ctx.beginPath();
+            this.ctx.arc(x - eyeOffset, y - eyeOffset, eyeSize, 0, Math.PI * 2);
+            this.ctx.fill();
+            this.ctx.beginPath();
+            this.ctx.arc(x + eyeOffset, y - eyeOffset, eyeSize, 0, Math.PI * 2);
+            this.ctx.fill();
+        }
+        
         const healthPercent = enemy.health / enemy.maxHealth;
         const barWidth = this.tileSize * 0.8 * enemy.size;
         const barHeight = enemy.isBoss ? 8 : 4;
@@ -1285,6 +1339,13 @@ class IsometricGame {
 
 // Initialize the game when the window loads
 window.addEventListener('load', () => {
+    // Check if skills are loaded
+    if (typeof createSkills === 'undefined') {
+        console.error('Skills system not loaded! Make sure to include skills.js before game.js');
+        alert('Game failed to load: skills.js is missing. Please include it before game.js in your HTML.');
+        return;
+    }
+    
     if (typeof nipplejs === 'undefined') {
         const script = document.createElement('script');
         script.src = 'https://cdnjs.cloudflare.com/ajax/libs/nipplejs/0.10.1/nipplejs.min.js';
