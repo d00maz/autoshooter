@@ -5,7 +5,7 @@
 class IsometricGame {
     constructor() {
         this.canvas = document.getElementById('game-canvas');
-	this.canvas.style.filter = 'brightness(1.4)';
+        this.canvas.style.filter = 'brightness(1.4)';
         this.ctx = this.canvas.getContext('2d');
         this.lastTime = 0;
         this.accumulated = 0;
@@ -52,7 +52,8 @@ class IsometricGame {
                 type: 'normal',
                 level: 1,
                 aimDirection: { x: 1, y: 0 },
-                visualAngle: 0
+                visualAngle: 0,
+                bulletModifiers: [] // NEW: Array for modular bullet modifiers
             }
         };
 
@@ -62,7 +63,6 @@ class IsometricGame {
         // Load skills from external file
         if (typeof createSkills !== 'undefined') {
             this.allSkills = createSkills(this);
-            
             // You can add custom skills here for testing without editing skills.js:
             // this.allSkills.my_test_skill = {
             //     id: 'my_test_skill',
@@ -544,76 +544,83 @@ class IsometricGame {
         }
     }
 
+    // --- REFACTORED: Modular fireBullet() with bulletModifiers ---
+
     fireBullet() {
         const aimDir = this.player.weapon.aimDirection;
         const gunOffset = this.tileSize * 0.4 / this.tileSize; // Offset in world units
         const baseX = this.player.x + aimDir.x * gunOffset;
         const baseY = this.player.y + aimDir.y * gunOffset;
 
-        const createBullet = (direction, damageMultiplier = 1) => ({
-            x: baseX,
-            y: baseY,
-            speed: this.player.weapon.bulletSpeed,
-            direction,
-            damage: this.player.weapon.damage * damageMultiplier,
-            lifeTime: 2.0,
-            explosive: this.player.weapon.explosive,
-            piercing: this.player.weapon.piercing,
-            // Bullets need a small bounding box for collision
-            boundingBox: { width: 0.2, height: 0.2 }
-        });
+        // Helper to create a bullet and apply onFire modifier hooks
+        const createBullet = (direction, damageMultiplier = 1) => {
+            // Base bullet
+            const bullet = {
+                x: baseX,
+                y: baseY,
+                speed: this.player.weapon.bulletSpeed,
+                direction,
+                damage: this.player.weapon.damage * damageMultiplier,
+                lifeTime: 2.0,
+                // The following properties may be further customized by modifiers
+                explosive: this.player.weapon.explosive,
+                piercing: this.player.weapon.piercing,
+                boundingBox: { width: 0.2, height: 0.2 }
+            };
+            // Call all bulletModifiers' onFire hooks
+            if (Array.isArray(this.player.weapon.bulletModifiers)) {
+                for (const mod of this.player.weapon.bulletModifiers) {
+                    if (typeof mod.onFire === 'function') {
+                        mod.onFire(bullet, this);
+                    }
+                }
+            }
+            return bullet;
+        };
 
-        switch (this.player.weapon.type) {
-            case 'double': {
-                const mainAngle = Math.atan2(aimDir.y, aimDir.x);
-                const perpX = -Math.sin(mainAngle);
-                const perpY = Math.cos(mainAngle);
-                const offsetDistance = 0.2;
-                for (let i = -1; i <= 1; i += 2) {
-                    const bullet = createBullet({ x: aimDir.x, y: aimDir.y });
-                    bullet.x += perpX * offsetDistance * i;
-                    bullet.y += perpY * offsetDistance * i;
-                    this.bullets.push(bullet);
-                }
-                break;
+        // Get bullet modifiers for this shot
+        const type = this.player.weapon.type;
+        if (type === 'double') {
+            const mainAngle = Math.atan2(aimDir.y, aimDir.x);
+            const perpX = -Math.sin(mainAngle);
+            const perpY = Math.cos(mainAngle);
+            const offsetDistance = 0.2;
+            for (let i = -1; i <= 1; i += 2) {
+                const direction = { x: aimDir.x, y: aimDir.y };
+                const bullet = createBullet(direction);
+                bullet.x += perpX * offsetDistance * i;
+                bullet.y += perpY * offsetDistance * i;
+                this.bullets.push(bullet);
             }
-            case 'triple': {
-                const tripleSpreadAngle = Math.PI / 12;
-                for (let i = -1; i <= 1; i++) {
-                    const angle = Math.atan2(aimDir.y, aimDir.x) + i * tripleSpreadAngle;
-                    const direction = { x: Math.cos(angle), y: Math.sin(angle) };
-                    this.bullets.push(createBullet(direction, 0.9));
-                }
-                break;
+        } else if (type === 'triple') {
+            const tripleSpreadAngle = Math.PI / 12;
+            for (let i = -1; i <= 1; i++) {
+                const angle = Math.atan2(aimDir.y, aimDir.x) + i * tripleSpreadAngle;
+                const direction = { x: Math.cos(angle), y: Math.sin(angle) };
+                this.bullets.push(createBullet(direction, 0.9));
             }
-            case 'quad': {
-                const baseAngle = Math.atan2(aimDir.y, aimDir.x);
-                for (let i = 0; i < 4; i++) {
-                    const angle = baseAngle + i * (Math.PI / 2);
-                    const direction = { x: Math.cos(angle), y: Math.sin(angle) };
-                    this.bullets.push(createBullet(direction, 0.8));
-                }
-                break;
+        } else if (type === 'quad') {
+            const baseAngle = Math.atan2(aimDir.y, aimDir.x);
+            for (let i = 0; i < 4; i++) {
+                const angle = baseAngle + i * (Math.PI / 2);
+                const direction = { x: Math.cos(angle), y: Math.sin(angle) };
+                this.bullets.push(createBullet(direction, 0.8));
             }
-            case 'shotgun': {
-                const spreadCount = 7;
-                const spreadAngle = Math.PI / 4;
-                for (let i = 0; i < spreadCount; i++) {
-                    const angle = Math.atan2(aimDir.y, aimDir.x) + (i - (spreadCount - 1) / 2) * (spreadAngle / (spreadCount - 1));
-                    const direction = { x: Math.cos(angle), y: Math.sin(angle) };
-                    const bullet = createBullet(direction, 0.7); // Increased from 0.5
-                    bullet.lifeTime = 1.0;
-                    this.bullets.push(bullet);
-                }
-                break;
+        } else if (type === 'shotgun') {
+            const spreadCount = 7;
+            const spreadAngle = Math.PI / 4;
+            for (let i = 0; i < spreadCount; i++) {
+                const angle = Math.atan2(aimDir.y, aimDir.x) + (i - (spreadCount - 1) / 2) * (spreadAngle / (spreadCount - 1));
+                const direction = { x: Math.cos(angle), y: Math.sin(angle) };
+                const bullet = createBullet(direction, 0.7); // Increased from 0.5
+                bullet.lifeTime = 1.0;
+                this.bullets.push(bullet);
             }
-            default: { // normal
-                this.bullets.push(createBullet({ x: aimDir.x, y: aimDir.y }));
-                break;
-            }
+        } else {
+            // Normal
+            this.bullets.push(createBullet({ x: aimDir.x, y: aimDir.y }));
         }
     }
-
 
     getTileAt(x, y) {
         const key = `${x},${y}`;
@@ -780,7 +787,8 @@ class IsometricGame {
         this.showNotification('BOSS SPAWNED!');
     }
 
-    // --- REWRITTEN UPDATE METHOD ---
+    // --- REFACTORED: update() bullet/enemy collision logic with bulletModifiers ---
+
     update(dt) {
         if (this.gamePaused) return;
         this.survivalTime += dt;
@@ -836,46 +844,67 @@ class IsometricGame {
                 continue;
             }
 
+            let bulletHit = false;
+
             for (let j = this.enemies.length - 1; j >= 0; j--) {
                 const enemy = this.enemies[j];
                 // Use new AABB collision check
                 if (this.checkAABBCollision(bullet, enemy)) {
                     let damage = bullet.damage;
                     let isCritical = false;
-                    
-                    // Apply critical hit
+
+                    // --- Modular: Run all bulletModifiers onHit hooks
+                    if (Array.isArray(this.player.weapon.bulletModifiers)) {
+                        for (const mod of this.player.weapon.bulletModifiers) {
+                            if (typeof mod.onHit === 'function') {
+                                mod.onHit(enemy, bullet, this);
+                            }
+                        }
+                    }
+
+                    // Apply critical hit (still check if critChance is set)
                     if (this.player.weapon.critChance && Math.random() < this.player.weapon.critChance) {
                         damage *= 2.5; // Increased from 2
                         isCritical = true;
                     }
-                    
+
                     // Apply boss damage bonus
                     if (enemy.isBoss && this.player.bossDamageBonus) {
                         damage *= (1 + this.player.bossDamageBonus);
                     }
-                    
-                    enemy.health -= damage;
+
+                    // If any modifier set bullet.cancelDamage, don't apply default damage
+                    if (!bullet.cancelDamage) {
+                        enemy.health -= damage;
+                    }
                     enemy.hitFlash = 0.15; // NEW: Set hit flash duration
-                    
+
                     // NEW: Create hit effect at impact point
                     this.createHitEffect(bullet.x, bullet.y, isCritical);
-                    
+
                     // Apply knockback if enabled
                     if (this.player.weapon.knockback) {
                         const knockbackForce = enemy.isBoss ? 0.1 : 0.3; // Less knockback on bosses
                         enemy.x += bullet.direction.x * knockbackForce;
                         enemy.y += bullet.direction.y * knockbackForce;
                     }
-                    
+
+                    // Handle built-in explosive bullets
                     if (bullet.explosive) {
                         this.createExplosion(bullet.x, bullet.y);
                     }
+
+                    bulletHit = true;
+
+                    // Only remove bullet if not piercing
                     if (!bullet.piercing) {
                         this.bullets.splice(i, 1);
                         break; // Bullet is destroyed, no need to check other enemies
                     }
                 }
             }
+            // If the bullet hit and is not piercing, it's already spliced
+            // Otherwise, it will keep going for other enemies or timeout
         }
 
         // --- Grenade Update ---
