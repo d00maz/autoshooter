@@ -5,7 +5,7 @@
 class IsometricGame {
     constructor() {
         this.canvas = document.getElementById('game-canvas');
-        this.canvas.style.filter = 'brightness(1.4)';
+	this.canvas.style.filter = 'brightness(1.4)';
         this.ctx = this.canvas.getContext('2d');
         this.lastTime = 0;
         this.accumulated = 0;
@@ -52,8 +52,7 @@ class IsometricGame {
                 type: 'normal',
                 level: 1,
                 aimDirection: { x: 1, y: 0 },
-                visualAngle: 0,
-                bulletModifiers: [] // NEW: Array for modular bullet modifiers
+                visualAngle: 0
             }
         };
 
@@ -61,8 +60,10 @@ class IsometricGame {
         this.enemySpeedRatio = 0.5; // Increased from 0.4 to compensate for slower player
 
         // Load skills from external file
-        if (typeof createSkills !== 'undefined') {
+        if (typeof createSkills !== 'undefined' && typeof SkillManager !== 'undefined') {
             this.allSkills = createSkills(this);
+            this.skillManager = new SkillManager(this);
+            
             // You can add custom skills here for testing without editing skills.js:
             // this.allSkills.my_test_skill = {
             //     id: 'my_test_skill',
@@ -76,6 +77,7 @@ class IsometricGame {
         } else {
             console.error('Skills system not loaded! Make sure skills.js is included before game.js');
             this.allSkills = {};
+            this.skillManager = null;
         }
 
         this.availableSkills = [];
@@ -100,10 +102,81 @@ class IsometricGame {
         this.bossSpawnTimer = 60; // First boss at 1 minute
         this.bossCount = 0;
 
+        // Mutation system
+        this.mutations = [];
+        this.mutationTimer = 300; // 5 minutes
+        this.availableMutations = [
+            {
+                id: 'speed_demon',
+                name: 'Speed Demon',
+                icon: '🌪',
+                description: 'All enemies move 30% faster',
+                color: '#00ff00',
+                apply: () => {
+                    this.enemySpeedRatio *= 1.3;
+                    this.updateEnemySpeeds();
+                }
+            },
+            {
+                id: 'scorched_earth',
+                name: 'Scorched Earth',
+                icon: '🔥',
+                description: 'Random fire zones deal damage',
+                color: '#ff4500',
+                apply: () => {
+                    // Fire zones will be handled in update
+                }
+            },
+            {
+                id: 'frost_snap',
+                name: 'Frost Snap',
+                icon: '🧊',
+                description: 'Random freeze waves affect player',
+                color: '#00bfff',
+                apply: () => {
+                    // Freeze effects will be handled in update
+                }
+            },
+            {
+                id: 'volatile',
+                name: 'Volatile',
+                icon: '☢️',
+                description: 'Enemies explode on death',
+                color: '#9400d3',
+                apply: () => {
+                    // Explosion will be handled in enemy death
+                }
+            },
+            {
+                id: 'thick_hide',
+                name: 'Thick Hide',
+                icon: '🛡️',
+                description: 'Enemies have 50% more health',
+                color: '#8b4513',
+                apply: () => {
+                    // Applied to new spawns
+                }
+            },
+            {
+                id: 'blood_frenzy',
+                name: 'Blood Frenzy',
+                icon: '🩸',
+                description: 'Enemies deal 30% more damage',
+                color: '#dc143c',
+                apply: () => {
+                    // Applied during damage calculation
+                }
+            }
+        ];
+        this.fireZones = [];
+        this.freezeWaveTimer = 0;
+        this.freezeEffect = null;
+
         this.setupControls();
         const weaponText = document.getElementById('weapon-text');
         if (weaponText) weaponText.textContent = 'Weapon: Pistol';
         this.resize();
+        this.updateMutationCards(); // Initialize empty mutation display
         window.addEventListener('resize', () => this.resize());
         requestAnimationFrame((time) => this.loop(time));
     }
@@ -265,6 +338,129 @@ class IsometricGame {
         });
     }
 
+    triggerMutation() {
+        // Get mutations that haven't been applied yet
+        const availableMuts = this.availableMutations.filter(m => 
+            !this.mutations.some(active => active.id === m.id)
+        );
+        
+        if (availableMuts.length === 0) return;
+        
+        // Pick a random mutation
+        const mutation = availableMuts[Math.floor(Math.random() * availableMuts.length)];
+        this.mutations.push(mutation);
+        mutation.apply();
+        
+        // Show notification
+        this.showNotification(`MUTATION: ${mutation.name} - ${mutation.description}`, 5000);
+        
+        // Update mutation cards display
+        this.updateMutationCards();
+    }
+
+    updateMutationCards() {
+        // Remove existing mutation cards
+        const existingCards = document.getElementById('mutation-cards');
+        if (existingCards) {
+            existingCards.remove();
+        }
+        
+        // Create mutation cards container
+        const container = document.createElement('div');
+        container.id = 'mutation-cards';
+        container.style = `
+            position: absolute;
+            top: 80px;
+            right: 10px;
+            display: flex;
+            flex-direction: row;
+            gap: 3px;
+            z-index: 100;
+        `;
+        
+        // Add each active mutation as a minimal icon card
+        // Icons: 🌪=Speed, 🔥=Fire, 🧊=Freeze, ☢️=Volatile, 🛡️=Armor, 🩸=Frenzy
+        this.mutations.forEach((mutation, index) => {
+            const card = document.createElement('div');
+            card.style = `
+                background: ${mutation.color}66;
+                border: 1px solid ${mutation.color};
+                border-radius: 4px;
+                padding: 4px 6px;
+                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+                animation: slideIn 0.3s ease-out;
+                animation-delay: ${index * 0.1}s;
+                animation-fill-mode: both;
+                font-size: 18px;
+            `;
+            
+            card.innerHTML = mutation.icon;
+            
+            container.appendChild(card);
+        });
+        
+        document.body.appendChild(container);
+        
+        // Add CSS animation if not already present
+        if (!document.getElementById('mutation-styles')) {
+            const style = document.createElement('style');
+            style.id = 'mutation-styles';
+            style.textContent = `
+                @keyframes slideIn {
+                    from {
+                        transform: translateY(-10px);
+                        opacity: 0;
+                    }
+                    to {
+                        transform: translateY(0);
+                        opacity: 1;
+                    }
+                }
+            `;
+            document.head.appendChild(style);
+        }
+    }
+
+    showNotification(message, duration = 3000) {
+        const notification = document.createElement('div');
+        notification.style = `
+            position: absolute;
+            top: 140px;
+            right: 10px;
+            background-color: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 6px 12px;
+            border-radius: 4px;
+            z-index: 100;
+            font-size: 12px;
+            max-width: 200px;
+            text-align: right;
+            animation: fadeIn 0.3s ease-out;
+        `;
+        notification.textContent = message;
+        document.body.appendChild(notification);
+        
+        // Add fade animation
+        const fadeStyle = document.getElementById('fade-style');
+        if (!fadeStyle) {
+            const style = document.createElement('style');
+            style.id = 'fade-style';
+            style.textContent = `
+                @keyframes fadeIn {
+                    from { opacity: 0; transform: translateX(20px); }
+                    to { opacity: 1; transform: translateX(0); }
+                }
+            `;
+            document.head.appendChild(style);
+        }
+        
+        setTimeout(() => {
+            if (document.body.contains(notification)) {
+                document.body.removeChild(notification);
+            }
+        }, duration);
+    }
+
     // --- CORE GAME LOGIC (UNCHANGED SECTIONS OMITTED FOR BREVITY) ---
 
     resize() {
@@ -350,6 +546,17 @@ class IsometricGame {
         this.player.experience -= this.player.experienceToNextLevel;
         this.player.experienceToNextLevel = Math.floor(this.player.experienceToNextLevel * 1.15); // Reduced from 1.2 for faster leveling
         document.getElementById('level-text').textContent = `Level ${this.player.level}`;
+        
+        // Process on-level-up effects through skill manager
+        if (this.skillManager) {
+            for (const skillId in this.allSkills) {
+                const skill = this.allSkills[skillId];
+                if (skill.currentStacks > 0 && skill.onLevelUp) {
+                    skill.onLevelUp();
+                }
+            }
+        }
+        
         this.showLevelUpMessage();
         this.gamePaused = true;
         this.showSkillSelection();
@@ -498,28 +705,6 @@ class IsometricGame {
         this.gamePaused = false;
     }
 
-    showNotification(message) {
-        const notification = document.createElement('div');
-        notification.style = `
-            position: absolute;
-            bottom: 100px;
-            left: 50%;
-            transform: translateX(-50%);
-            background-color: rgba(0, 0, 0, 0.7);
-            color: white;
-            padding: 10px 20px;
-            border-radius: 5px;
-            z-index: 100;
-        `;
-        notification.textContent = message;
-        document.body.appendChild(notification);
-        setTimeout(() => {
-            if (document.body.contains(notification)) {
-                document.body.removeChild(notification);
-            }
-        }, 3000);
-    }
-
     createExplosion(x, y) {
         const explosion = {
             x: x,
@@ -544,17 +729,13 @@ class IsometricGame {
         }
     }
 
-    // --- REFACTORED: Modular fireBullet() with bulletModifiers ---
-
     fireBullet() {
         const aimDir = this.player.weapon.aimDirection;
         const gunOffset = this.tileSize * 0.4 / this.tileSize; // Offset in world units
         const baseX = this.player.x + aimDir.x * gunOffset;
         const baseY = this.player.y + aimDir.y * gunOffset;
 
-        // Helper to create a bullet and apply onFire modifier hooks
         const createBullet = (direction, damageMultiplier = 1) => {
-            // Base bullet
             const bullet = {
                 x: baseX,
                 y: baseY,
@@ -562,65 +743,78 @@ class IsometricGame {
                 direction,
                 damage: this.player.weapon.damage * damageMultiplier,
                 lifeTime: 2.0,
-                // The following properties may be further customized by modifiers
                 explosive: this.player.weapon.explosive,
                 piercing: this.player.weapon.piercing,
+                // Bullets need a small bounding box for collision
                 boundingBox: { width: 0.2, height: 0.2 }
             };
-            // Call all bulletModifiers' onFire hooks
-            if (Array.isArray(this.player.weapon.bulletModifiers)) {
-                for (const mod of this.player.weapon.bulletModifiers) {
-                    if (typeof mod.onFire === 'function') {
-                        mod.onFire(bullet, this);
-                    }
-                }
+            
+            // Process on-bullet-fire effects
+            if (this.skillManager) {
+                this.skillManager.onBulletFire(bullet);
             }
+            
             return bullet;
         };
 
-        // Get bullet modifiers for this shot
-        const type = this.player.weapon.type;
-        if (type === 'double') {
-            const mainAngle = Math.atan2(aimDir.y, aimDir.x);
-            const perpX = -Math.sin(mainAngle);
-            const perpY = Math.cos(mainAngle);
-            const offsetDistance = 0.2;
-            for (let i = -1; i <= 1; i += 2) {
-                const direction = { x: aimDir.x, y: aimDir.y };
-                const bullet = createBullet(direction);
-                bullet.x += perpX * offsetDistance * i;
-                bullet.y += perpY * offsetDistance * i;
-                this.bullets.push(bullet);
+        switch (this.player.weapon.type) {
+            case 'double': {
+                const mainAngle = Math.atan2(aimDir.y, aimDir.x);
+                const perpX = -Math.sin(mainAngle);
+                const perpY = Math.cos(mainAngle);
+                const offsetDistance = 0.2;
+                for (let i = -1; i <= 1; i += 2) {
+                    const bullet = createBullet({ x: aimDir.x, y: aimDir.y });
+                    bullet.x += perpX * offsetDistance * i;
+                    bullet.y += perpY * offsetDistance * i;
+                    this.bullets.push(bullet);
+                }
+                break;
             }
-        } else if (type === 'triple') {
-            const tripleSpreadAngle = Math.PI / 12;
-            for (let i = -1; i <= 1; i++) {
-                const angle = Math.atan2(aimDir.y, aimDir.x) + i * tripleSpreadAngle;
-                const direction = { x: Math.cos(angle), y: Math.sin(angle) };
-                this.bullets.push(createBullet(direction, 0.9));
+            case 'triple': {
+                const tripleSpreadAngle = Math.PI / 12;
+                for (let i = -1; i <= 1; i++) {
+                    const angle = Math.atan2(aimDir.y, aimDir.x) + i * tripleSpreadAngle;
+                    const direction = { x: Math.cos(angle), y: Math.sin(angle) };
+                    this.bullets.push(createBullet(direction, 0.9));
+                }
+                break;
             }
-        } else if (type === 'quad') {
-            const baseAngle = Math.atan2(aimDir.y, aimDir.x);
-            for (let i = 0; i < 4; i++) {
-                const angle = baseAngle + i * (Math.PI / 2);
-                const direction = { x: Math.cos(angle), y: Math.sin(angle) };
-                this.bullets.push(createBullet(direction, 0.8));
+            case 'quad': {
+                const baseAngle = Math.atan2(aimDir.y, aimDir.x);
+                const spreadAngle = Math.PI / 16; // Tight 22.5 degree total spread
+                
+                // Fire 4 bullets in a tight cone where you're aiming
+                for (let i = 0; i < 4; i++) {
+                    // Arrange bullets in a pattern: -1.5, -0.5, 0.5, 1.5
+                    const offsetMultiplier = (i - 1.5) * 0.667;
+                    const angle = baseAngle + offsetMultiplier * spreadAngle;
+                    const direction = { x: Math.cos(angle), y: Math.sin(angle) };
+                    
+                    // Full damage since they're all going where you want
+                    this.bullets.push(createBullet(direction, 1.0));
+                }
+                break;
             }
-        } else if (type === 'shotgun') {
-            const spreadCount = 7;
-            const spreadAngle = Math.PI / 4;
-            for (let i = 0; i < spreadCount; i++) {
-                const angle = Math.atan2(aimDir.y, aimDir.x) + (i - (spreadCount - 1) / 2) * (spreadAngle / (spreadCount - 1));
-                const direction = { x: Math.cos(angle), y: Math.sin(angle) };
-                const bullet = createBullet(direction, 0.7); // Increased from 0.5
-                bullet.lifeTime = 1.0;
-                this.bullets.push(bullet);
+            case 'shotgun': {
+                const spreadCount = 7;
+                const spreadAngle = Math.PI / 4;
+                for (let i = 0; i < spreadCount; i++) {
+                    const angle = Math.atan2(aimDir.y, aimDir.x) + (i - (spreadCount - 1) / 2) * (spreadAngle / (spreadCount - 1));
+                    const direction = { x: Math.cos(angle), y: Math.sin(angle) };
+                    const bullet = createBullet(direction, 0.7); // Increased from 0.5
+                    bullet.lifeTime = 1.0;
+                    this.bullets.push(bullet);
+                }
+                break;
             }
-        } else {
-            // Normal
-            this.bullets.push(createBullet({ x: aimDir.x, y: aimDir.y }));
+            default: { // normal
+                this.bullets.push(createBullet({ x: aimDir.x, y: aimDir.y }));
+                break;
+            }
         }
     }
+
 
     getTileAt(x, y) {
         const key = `${x},${y}`;
@@ -723,6 +917,11 @@ class IsometricGame {
                     size: 1.3 
                 };
             }
+            
+            // Apply Thick Hide mutation
+            if (this.mutations.some(m => m.id === 'thick_hide')) {
+                zombieStats.health *= 1.5;
+            }
 
             this.enemies.push({
                 x,
@@ -744,6 +943,11 @@ class IsometricGame {
                 facing: 0,
                 hitFlash: 0 // NEW: For hit flash effect
             });
+            
+            // Process on-enemy-spawn effects
+            if (this.skillManager) {
+                this.skillManager.onEnemySpawn(this.enemies[this.enemies.length - 1]);
+            }
         }
     }
     
@@ -762,6 +966,13 @@ class IsometricGame {
         }
         
         const bossMultiplier = 1 + this.bossCount * 0.5;
+        let bossHealth = Math.floor(800 * bossMultiplier); // Increased from 500
+        
+        // Apply Thick Hide mutation
+        if (this.mutations.some(m => m.id === 'thick_hide')) {
+            bossHealth *= 1.5;
+        }
+        
         const boss = {
             x,
             y,
@@ -771,8 +982,8 @@ class IsometricGame {
                 width: 1.8,
                 height: 1.8
             },
-            health: Math.floor(800 * bossMultiplier), // Increased from 500
-            maxHealth: Math.floor(800 * bossMultiplier), // Increased from 500
+            health: bossHealth,
+            maxHealth: bossHealth,
             speed: this.player.speed * 0.3,
             damage: 50, // Increased from 40
             speedVariation: 0,
@@ -784,11 +995,16 @@ class IsometricGame {
         };
         
         this.enemies.push(boss);
-        this.showNotification('BOSS SPAWNED!');
+        
+        // Process on-enemy-spawn effects for boss
+        if (this.skillManager) {
+            this.skillManager.onEnemySpawn(boss);
+        }
+        
+        this.showNotification('BOSS SPAWNED!', 4000);
     }
 
-    // --- REFACTORED: update() bullet/enemy collision logic with bulletModifiers ---
-
+    // --- REWRITTEN UPDATE METHOD ---
     update(dt) {
         if (this.gamePaused) return;
         this.survivalTime += dt;
@@ -811,10 +1027,10 @@ class IsometricGame {
             this.player.facingAngle = Math.atan2(-moveY, moveX);
         }
 
-        // --- Player state updates (regen, weapon angle, firing) ---
-        if (this.player.healthRegen) {
-            this.player.health = Math.min(this.player.maxHealth, this.player.health + this.player.healthRegen * dt);
-            document.getElementById('health-value').style.width = `${(this.player.health / this.player.maxHealth) * 100}%`;
+        // --- Player state updates (weapon angle, firing) ---
+        // Skill manager handles health regen and other updates
+        if (this.skillManager) {
+            this.skillManager.onUpdate(dt);
         }
         if (this.player.weapon.angle !== undefined) {
             let targetAngle = this.player.weapon.angle;
@@ -844,67 +1060,36 @@ class IsometricGame {
                 continue;
             }
 
-            let bulletHit = false;
-
             for (let j = this.enemies.length - 1; j >= 0; j--) {
                 const enemy = this.enemies[j];
                 // Use new AABB collision check
                 if (this.checkAABBCollision(bullet, enemy)) {
+                    // Let skill manager calculate final damage
                     let damage = bullet.damage;
                     let isCritical = false;
-
-                    // --- Modular: Run all bulletModifiers onHit hooks
-                    if (Array.isArray(this.player.weapon.bulletModifiers)) {
-                        for (const mod of this.player.weapon.bulletModifiers) {
-                            if (typeof mod.onHit === 'function') {
-                                mod.onHit(enemy, bullet, this);
-                            }
-                        }
+                    
+                    if (this.skillManager) {
+                        damage = this.skillManager.modifyDamage(damage, enemy, bullet);
+                        isCritical = bullet.isCritical || false;
                     }
-
-                    // Apply critical hit (still check if critChance is set)
-                    if (this.player.weapon.critChance && Math.random() < this.player.weapon.critChance) {
-                        damage *= 2.5; // Increased from 2
-                        isCritical = true;
-                    }
-
-                    // Apply boss damage bonus
-                    if (enemy.isBoss && this.player.bossDamageBonus) {
-                        damage *= (1 + this.player.bossDamageBonus);
-                    }
-
-                    // If any modifier set bullet.cancelDamage, don't apply default damage
-                    if (!bullet.cancelDamage) {
-                        enemy.health -= damage;
-                    }
-                    enemy.hitFlash = 0.15; // NEW: Set hit flash duration
-
-                    // NEW: Create hit effect at impact point
+                    
+                    enemy.health -= damage;
+                    enemy.hitFlash = 0.15; // Set hit flash duration
+                    
+                    // Create hit effect at impact point
                     this.createHitEffect(bullet.x, bullet.y, isCritical);
-
-                    // Apply knockback if enabled
-                    if (this.player.weapon.knockback) {
-                        const knockbackForce = enemy.isBoss ? 0.1 : 0.3; // Less knockback on bosses
-                        enemy.x += bullet.direction.x * knockbackForce;
-                        enemy.y += bullet.direction.y * knockbackForce;
+                    
+                    // Process on-hit effects through skill manager
+                    if (this.skillManager) {
+                        this.skillManager.onHit(bullet, enemy, damage);
                     }
-
-                    // Handle built-in explosive bullets
-                    if (bullet.explosive) {
-                        this.createExplosion(bullet.x, bullet.y);
-                    }
-
-                    bulletHit = true;
-
-                    // Only remove bullet if not piercing
+                    
                     if (!bullet.piercing) {
                         this.bullets.splice(i, 1);
                         break; // Bullet is destroyed, no need to check other enemies
                     }
                 }
             }
-            // If the bullet hit and is not piercing, it's already spliced
-            // Otherwise, it will keep going for other enemies or timeout
         }
 
         // --- Grenade Update ---
@@ -959,12 +1144,52 @@ class IsometricGame {
             if (enemy.health <= 0) {
                 this.player.score += 10;
                 
-                // Check for grenade chance on kill
-                if (this.player.grenadeChance && Math.random() < this.player.grenadeChance) {
-                    const targetEnemy = this.findClosestEnemyBehind();
-                    if (targetEnemy) {
-                        this.throwGrenade(targetEnemy);
+                // Check for Volatile mutation - enemies explode on death
+                if (this.mutations.some(m => m.id === 'volatile')) {
+                    // Create smaller explosion than normal
+                    const explosion = {
+                        x: enemy.x,
+                        y: enemy.y,
+                        radius: 0,
+                        maxRadius: this.tileSize * 1.5,
+                        lifeTime: 0.3,
+                        maxLifeTime: 0.3,
+                        color: '#ff00ff'
+                    };
+                    this.explosions.push(explosion);
+                    
+                    // Deal damage to nearby enemies and player
+                    const targets = [...this.enemies, this.player];
+                    for (const target of targets) {
+                        if (target === enemy) continue;
+                        const dx = (target.x - enemy.x);
+                        const dy = (target.y - enemy.y);
+                        const distance = Math.sqrt(dx * dx + dy * dy) * this.tileSize;
+                        if (distance < explosion.maxRadius) {
+                            const damageMultiplier = 1 - (distance / explosion.maxRadius);
+                            const damage = enemy.damage * damageMultiplier;
+                            
+                            if (target === this.player) {
+                                this.player.health -= damage;
+                                document.getElementById('health-value').style.width = 
+                                    `${(this.player.health / this.player.maxHealth) * 100}%`;
+                                    
+                                if (this.player.health <= 0) {
+                                    const minutes = Math.floor(this.survivalTime / 60);
+                                    const seconds = Math.floor(this.survivalTime % 60);
+                                    alert(`Game Over!\n\nSurvival Time: ${minutes}:${seconds.toString().padStart(2, '0')}\nZombies Killed: ${this.player.score / 10}\nLevel Reached: ${this.player.level}`);
+                                    window.location.reload();
+                                }
+                            } else {
+                                target.health -= damage;
+                            }
+                        }
                     }
+                }
+                
+                // Process on-kill effects through skill manager
+                if (this.skillManager) {
+                    this.skillManager.onKill(enemy);
                 }
                 
                 // Different rewards for bosses
@@ -973,21 +1198,12 @@ class IsometricGame {
                     this.player.health = Math.min(this.player.maxHealth, this.player.health + 50); // Increased from 20
                     document.getElementById('health-value').style.width =
                         `${(this.player.health / this.player.maxHealth) * 100}%`;
-                    this.showNotification('Boss defeated! +50 HP');
+                    this.showNotification('Boss defeated! +50 HP', 4000);
+                    
+                    // Boss kill triggers a mutation!
+                    this.triggerMutation();
                 } else {
                     this.gainExperience(10 + Math.floor((enemy.maxHealth || 0) / 20)); // Increased base from 5 to 10
-                }
-                
-                // Life steal mechanic
-                if (this.player.lifeSteal) {
-                    if (!this.player.killCount) this.player.killCount = 0;
-                    this.player.killCount++;
-                    if (this.player.killCount >= 10) {
-                        this.player.health = Math.min(this.player.maxHealth, this.player.health + this.player.lifeSteal);
-                        this.player.killCount -= 10;
-                        document.getElementById('health-value').style.width =
-                            `${(this.player.health / this.player.maxHealth) * 100}%`;
-                    }
                 }
                 
                 enemiesToRemove.add(enemy);
@@ -996,16 +1212,26 @@ class IsometricGame {
 
             // --- Player-Enemy Collision ---
             if (this.checkAABBCollision(this.player, enemy)) {
-                // Check dodge chance
-                if (this.player.dodgeChance && Math.random() < this.player.dodgeChance) {
+                // Check if attack should be dodged
+                if (this.skillManager && this.skillManager.canDodge()) {
                     // Dodged! Maybe show a visual effect later
                     continue;
                 }
                 
                 let damageTaken = enemy.damage * dt;
-                if (this.player.damageResistance) {
-                    damageTaken *= (1 - this.player.damageResistance);
+                
+                // Apply Blood Frenzy mutation
+                if (this.mutations.some(m => m.id === 'blood_frenzy')) {
+                    damageTaken *= 1.3;
                 }
+                
+                // Apply damage modifiers through skill manager
+                if (this.skillManager) {
+                    damageTaken = this.skillManager.modifyDamageTaken(damageTaken, enemy);
+                    // Process on-damage-taken effects
+                    this.skillManager.onDamageTaken(enemy, damageTaken);
+                }
+                
                 this.player.health -= damageTaken;
                 if (this.player.health <= 0) {
                     const minutes = Math.floor(this.survivalTime / 60);
@@ -1081,6 +1307,91 @@ class IsometricGame {
             // Next boss spawns faster and is stronger
             this.bossSpawnTimer = this.survivalTime + Math.max(30, 60 - this.bossCount * 5);
         }
+        
+        // --- Mutation System ---
+        // Check for mutation timer
+        if (this.survivalTime >= this.mutationTimer) {
+            this.triggerMutation();
+            this.mutationTimer = this.survivalTime + 300; // Next mutation in 5 minutes
+        }
+        
+        // Handle fire zones (Scorched Earth mutation)
+        if (this.mutations.some(m => m.id === 'scorched_earth')) {
+            // Spawn fire zones randomly
+            if (Math.random() < 0.01) { // 1% chance per frame
+                const fireZone = {
+                    x: this.player.x + (Math.random() - 0.5) * 20,
+                    y: this.player.y + (Math.random() - 0.5) * 20,
+                    radius: 1.5 + Math.random() * 2,
+                    duration: 5,
+                    damage: 15
+                };
+                this.fireZones.push(fireZone);
+            }
+            
+            // Update and check fire zones
+            for (let i = this.fireZones.length - 1; i >= 0; i--) {
+                const zone = this.fireZones[i];
+                zone.duration -= dt;
+                
+                if (zone.duration <= 0) {
+                    this.fireZones.splice(i, 1);
+                    continue;
+                }
+                
+                // Check if player is in fire zone
+                const dx = this.player.x - zone.x;
+                const dy = this.player.y - zone.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                
+                if (dist <= zone.radius) {
+                    this.player.health -= zone.damage * dt;
+                    document.getElementById('health-value').style.width = 
+                        `${(this.player.health / this.player.maxHealth) * 100}%`;
+                    
+                    if (this.player.health <= 0) {
+                        const minutes = Math.floor(this.survivalTime / 60);
+                        const seconds = Math.floor(this.survivalTime % 60);
+                        alert(`Game Over!\n\nSurvival Time: ${minutes}:${seconds.toString().padStart(2, '0')}\nZombies Killed: ${this.player.score / 10}\nLevel Reached: ${this.player.level}`);
+                        window.location.reload();
+                    }
+                }
+            }
+        }
+        
+        // Handle freeze waves (Frost Snap mutation)
+        if (this.mutations.some(m => m.id === 'frost_snap')) {
+            this.freezeWaveTimer += dt;
+            
+            // Trigger freeze wave every 10-20 seconds
+            if (this.freezeWaveTimer > 10 + Math.random() * 10) {
+                this.freezeWaveTimer = 0;
+                
+                // Slow player for 2 seconds
+                const originalSpeed = this.player.speed;
+                this.player.speed *= 0.5;
+                this.showNotification('Freeze wave! Movement slowed!', 2000);
+                
+                // Create visual freeze effect
+                this.freezeEffect = {
+                    duration: 2,
+                    maxDuration: 2
+                };
+                
+                setTimeout(() => {
+                    this.player.speed = originalSpeed;
+                    this.updateEnemySpeeds();
+                }, 2000);
+            }
+        }
+        
+        // Update freeze effect duration
+        if (this.freezeEffect) {
+            this.freezeEffect.duration -= dt;
+            if (this.freezeEffect.duration <= 0) {
+                delete this.freezeEffect;
+            }
+        }
     }
 
 
@@ -1140,6 +1451,66 @@ class IsometricGame {
             this.ctx.fill();
             
             this.ctx.shadowBlur = 0;
+            this.ctx.globalAlpha = 1.0;
+        }
+        
+        // Draw fire zones
+        for (const zone of this.fireZones || []) {
+            const screenX = (zone.x - this.camera.x) * this.tileSize + this.canvas.width / 2;
+            const screenY = (zone.y - this.camera.y) * this.tileSize + this.canvas.height / 2;
+            
+            // Draw fire effect
+            this.ctx.globalAlpha = 0.3 + Math.sin(Date.now() * 0.005) * 0.1;
+            
+            // Outer glow
+            const gradient = this.ctx.createRadialGradient(screenX, screenY, 0, screenX, screenY, zone.radius * this.tileSize);
+            gradient.addColorStop(0, '#ff6600');
+            gradient.addColorStop(0.5, '#ff3300');
+            gradient.addColorStop(1, 'rgba(255, 0, 0, 0)');
+            
+            this.ctx.fillStyle = gradient;
+            this.ctx.beginPath();
+            this.ctx.arc(screenX, screenY, zone.radius * this.tileSize, 0, Math.PI * 2);
+            this.ctx.fill();
+            
+            // Inner fire
+            this.ctx.globalAlpha = 0.6;
+            this.ctx.fillStyle = '#ffff00';
+            this.ctx.beginPath();
+            this.ctx.arc(screenX, screenY, zone.radius * this.tileSize * 0.3, 0, Math.PI * 2);
+            this.ctx.fill();
+            
+            this.ctx.globalAlpha = 1.0;
+        }
+        
+        // Draw freeze effect overlay
+        if (this.freezeEffect) {
+            this.ctx.globalAlpha = 0.3 * (this.freezeEffect.duration / this.freezeEffect.maxDuration);
+            this.ctx.fillStyle = '#00bfff';
+            this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+            
+            // Draw ice crystals at edges
+            const crystalCount = 20;
+            for (let i = 0; i < crystalCount; i++) {
+                const angle = (i / crystalCount) * Math.PI * 2;
+                const x = this.canvas.width / 2 + Math.cos(angle) * this.canvas.width * 0.7;
+                const y = this.canvas.height / 2 + Math.sin(angle) * this.canvas.height * 0.7;
+                
+                this.ctx.save();
+                this.ctx.translate(x, y);
+                this.ctx.rotate(angle);
+                this.ctx.fillStyle = '#ffffff';
+                this.ctx.globalAlpha = 0.5 * (this.freezeEffect.duration / this.freezeEffect.maxDuration);
+                
+                // Draw snowflake shape
+                for (let j = 0; j < 6; j++) {
+                    this.ctx.rotate(Math.PI / 3);
+                    this.ctx.fillRect(-1, -20, 2, 40);
+                }
+                
+                this.ctx.restore();
+            }
+            
             this.ctx.globalAlpha = 1.0;
         }
         
@@ -1237,6 +1608,22 @@ class IsometricGame {
         this.ctx.strokeStyle = '#666';
         this.ctx.lineWidth = 2;
         this.ctx.strokeRect(mapX, mapY, mapSize, mapSize);
+        
+        // Draw mutation timer
+        const timeToNextMutation = Math.max(0, this.mutationTimer - this.survivalTime);
+        if (timeToNextMutation > 0) {
+            const minutes = Math.floor(timeToNextMutation / 60);
+            const seconds = Math.floor(timeToNextMutation % 60);
+            
+            this.ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+            this.ctx.fillRect(mapX, mapY + mapSize + 5, mapSize, 20);
+            
+            this.ctx.fillStyle = '#ff6600';
+            this.ctx.font = '11px Arial';
+            this.ctx.textAlign = 'center';
+            this.ctx.fillText(`Next: ${minutes}:${seconds.toString().padStart(2, '0')}`, mapX + mapSize / 2, mapY + mapSize + 18);
+            this.ctx.textAlign = 'left';
+        }
     }
     drawEnemy(x, y, enemy) {
         // Add boss glow effect
@@ -1369,9 +1756,9 @@ class IsometricGame {
 // Initialize the game when the window loads
 window.addEventListener('load', () => {
     // Check if skills are loaded
-    if (typeof createSkills === 'undefined') {
+    if (typeof createSkills === 'undefined' || typeof SkillManager === 'undefined') {
         console.error('Skills system not loaded! Make sure to include skills.js before game.js');
-        alert('Game failed to load: skills.js is missing. Please include it before game.js in your HTML.');
+        alert('Game failed to load: skills.js is missing or incomplete. Please include it before game.js in your HTML.');
         return;
     }
     
